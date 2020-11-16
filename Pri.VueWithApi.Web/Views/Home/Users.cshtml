@@ -1,0 +1,192 @@
+﻿@{
+    ViewData["Title"] = "Home Page";
+}
+
+
+<div class="text-center">
+    <h1 class="display-4">Users</h1>
+
+</div>
+
+<div id="app" class="row">
+    <div class="col-md-12">
+        <div class="alert alert-info" v-if="feedback">
+            {{feedback}}
+        </div>
+    </div>
+    <div class="col-md-12">
+        <button class="btn btn-info" v-on:click.prevent="toEditMode(false)">New</button>
+    </div>
+    <div class="col-md-6">
+        <ul class="list-group">
+            <li class="list-group-item" v-bind:class="getUserCssClass(user)" v-for="user in users" v-on:click="getUserDetails(user)">
+                <a v-bind:href="'mailto:' + user.email">{{user.name}}</a>
+            </li>
+        </ul>
+    </div>
+    <div class="col-md-6">
+        <div v-if="currentUser">
+            <div class="form-group">
+                <label>ID</label>
+                <input class="form-control" v-model="currentUser.id" readonly="readonly" />
+            </div>
+            <div class="form-group">
+                <label>Name</label>
+                <input class="form-control" v-model="currentUser.name" v-bind:readonly="isReadOnly" />
+            </div>
+            <div class="form-group">
+                <label>E-mail</label>
+                <input class="form-control" v-model="currentUser.email" v-bind:readonly="isReadOnly" />
+            </div>
+            <div class="form-group">
+                <label>Gender</label>
+                <input class="form-control" v-model="currentUser.gender" v-bind:readonly="isReadOnly" />
+            </div>
+            <div class="form-group">
+                <label>Status</label>
+                <input class="form-control" v-if="isReadOnly" v-model="currentUser.status" v-bind:readonly="isReadOnly" />
+                <select v-else v-model="currentUser.status" class="form-control">
+                    <option v-for="status in statuses" v-bind:value="status.name">{{status.name}}</option>
+                </select>
+            </div>
+            <div class="btn-group">
+                <button class="btn btn-warning" v-if="isReadOnly" v-on:click.prevent="toEditMode(true)">Edit</button>
+                <button class="btn btn-warning" v-if="!isReadOnly" v-on:click.prevent="saveUser">Save</button>
+                <button class="btn btn-primary" v-if="!isReadOnly" v-on:click.prevent="isReadOnly = true">Cancel</button>
+                <button class="btn btn-danger" v-on:click.prevent="deleteUser">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section scripts{
+    <script src="~/lib/vue/vue.js"></script>
+    <script src="~/lib/axios/axios.min.js"></script>
+
+    <script>
+        var apiURL = 'https://gorest.co.in/public-api/users';
+        var token = '4101f6a631feb4a556a9485df5f078adc3aff15e0823fb0253797d35c606f4d0';
+        const axiosConfig = { headers: { Authorization: `Bearer ${token}` } };
+        var lastPage = 0;
+
+        var app = new Vue({
+            el: '#app',
+            data: {
+                users: null,
+                currentUser: null,
+                isReadOnly: true,
+                feedback: '',
+                statuses: [{ name: 'Active' }, { name: 'Inactive' }],
+                isEditMode: false
+            },
+            created: function () {
+                var self = this;
+                self.fetchUsers();
+            },
+            methods: {
+                fetchUsers: function () {
+                    var self = this;
+
+                    if (lastPage > 0) {
+                        axios.get(`${apiURL}?page=${lastPage}`)
+                            .then(function (response) {
+                                self.users = response.data.data;
+                            })
+                            .catch(function (error) {
+                                console.error(error);
+                            });
+                    }
+                    else {
+                        axios.get(`${apiURL}`)
+                            .then(function (response) {
+                                lastPage = response.data.meta.pagination.pages;
+                                self.fetchUsers();
+                            })
+                            .catch(function (error) {
+                                console.error(error);
+                            });
+                    }
+                },
+
+                getUserCssClass: function (user) {
+                    if (user.status == "Inactive") {
+                        return "list-group-item-danger";
+                    }
+                },
+
+                getUserDetails: function (user) {
+                    var self = this;
+                    self.currentUser = user;
+                },
+
+                toEditMode: function (isEditMode) {
+                    var self = this;
+                    self.isReadOnly = false;
+                    self.isEditMode = isEditMode;
+
+                    if (!self.isEditMode) {
+                        self.currentUser = {
+                            name: "",
+                            id: "",
+                            status: "",
+                            email: "",
+                            gender: ""
+                        }
+                    }
+                },
+
+                saveUser: function () {
+                    var self = this;
+
+                    if (self.isEditMode) {
+
+                        var url = `${apiURL}/${self.currentUser.id}`;
+                        axios.put(url, self.currentUser, axiosConfig)
+                            .then(function (response) {
+                                self.feedback = `User ${self.currentUser.name} with ID ${self.currentUser.id} has been modified`;
+                            })
+                            .catch(function (error) {
+                                console.error(error);
+                            })
+                            .then(function () {
+                                self.isReadOnly = true;
+                                setTimeout(function () { self.feedback = null; }, 3000);
+                            });
+                    }
+                    else {
+                        var url = `${apiURL}`;
+                        axios.post(url, self.currentUser, axiosConfig)
+                            .then(function (response) {
+                                self.currentUser = response.data.data;
+                                self.feedback = `User ${self.currentUser.name} with ID ${self.currentUser.id} has been created`;
+                                self.users.push(self.currentUser); // update users, no need to call API again to fetch all users
+                            })
+                            .catch(function (error) {
+                                console.error(error);
+                            })
+                            .then(function () {
+                                self.isReadOnly = true;
+                                setTimeout(function () { self.feedback = null; }, 3000);
+                            });
+                    }
+                },
+
+                deleteUser: function () {
+                    var self = this;
+                    var url = `${apiURL}/${self.currentUser.id}`;
+
+                    axios.delete(url, axiosConfig)
+                        .then(function (response) {
+                            self.users.forEach(function (user, i) {
+                                if (user.id === self.currentUser.id) {
+                                    self.users.splice(i, 1); // update users, no need to call API again to fetch all users
+                                }
+                            })
+                        })
+                        .catch(function (error) { console.error(error); })
+                        .then(function () { });
+                }
+            }
+        });
+    </script>
+}
